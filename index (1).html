@@ -1,0 +1,228 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Neon Arena</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;height:100%;overflow:hidden;background:#050711;color:#fff;font-family:system-ui}
+canvas{width:100vw;height:100vh;display:block;background:radial-gradient(circle,#101936,#050711)}
+#hud{position:fixed;top:16px;left:16px;right:16px;display:flex;justify-content:space-between;z-index:2;pointer-events:none}
+.box{background:#080b19cc;border:1px solid #ffffff22;border-radius:14px;padding:10px 16px;backdrop-filter:blur(8px)}
+#menu{position:fixed;inset:0;display:grid;place-items:center;background:#03040bcc;z-index:5}
+.panel{width:min(520px,90vw);text-align:center;padding:36px;border-radius:26px;background:#0b1024ee;border:1px solid #ffffff20}
+h1{font-size:64px;line-height:.9;margin:0 0 15px;letter-spacing:-4px}
+p{color:#b9c3e8;line-height:1.55}
+button{padding:14px 28px;border:0;border-radius:13px;font-weight:800;font-size:17px;cursor:pointer;background:linear-gradient(135deg,#72f6ff,#65a3ff);color:#04101f}
+#mobile{display:none;position:fixed;bottom:18px;left:18px;right:18px;justify-content:space-between;z-index:3}
+.mbtn{width:64px;height:58px;border-radius:16px;background:#ffffff16;color:#fff;border:1px solid #ffffff22;font-size:22px}
+@media(max-width:800px){#mobile{display:flex}}
+</style></head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud"><div class="box">SCORE <b id="score">0</b>　 WAVE <b id="wave">1</b></div><div class="box">ENERGY <b id="hp">100</b></div></div>
+<div id="menu"><div class="panel"><div>ORIGINAL TOP-DOWN ACTION GAME</div><h1>NEON<br>ARENA</h1><p>Pilot your ship through a neon asteroid field. Move, aim with the mouse and blast the meteors before they crush you.</p><button id="start">START</button><p>WASD / arrows = move · Mouse = aim · Click / Space = fire</p></div></div>
+<div id="mobile"><button class="mbtn" data-k="ArrowLeft">◀</button><button class="mbtn" data-k="ArrowUp">▲</button><button class="mbtn" data-k="ArrowDown">▼</button><button class="mbtn" data-k="ArrowRight">▶</button></div>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d');let W,H,dpr;
+function resize(){dpr=devicePixelRatio||1;W=innerWidth;H=innerHeight;c.width=W*dpr;c.height=H*dpr;x.setTransform(dpr,0,0,dpr,0,0)}addEventListener('resize',resize);resize();
+let playing=false,last=0,score=0,hp=100,wave=1,spawn=0,fire=0,keys={},mouse={x:W/2,y:H/2,down:false},shots=[],enemies=[],parts=[],stars=[],shake=0;
+const player={x:0,y:0,r:16,s:280,ang:0,thrustT:0};
+
+// ---------- starfield (parallax) ----------
+function initStars(){stars=[];for(let i=0;i<140;i++)stars.push({x:Math.random()*W,y:Math.random()*H,z:.3+Math.random()*1.2,r:Math.random()*1.6+.3})}
+
+addEventListener('keydown',e=>{keys[e.code]=1;if(e.code==='Space')mouse.down=true});
+addEventListener('keyup',e=>{keys[e.code]=0;if(e.code==='Space')mouse.down=false});
+addEventListener('mousemove',e=>{mouse.x=e.clientX;mouse.y=e.clientY});
+addEventListener('mousedown',()=>mouse.down=true);addEventListener('mouseup',()=>mouse.down=false);
+document.querySelectorAll('.mbtn').forEach(b=>{b.onpointerdown=e=>{e.preventDefault();keys[b.dataset.k]=1};b.onpointerup=()=>keys[b.dataset.k]=0});
+
+function start(){playing=true;score=0;hp=100;wave=1;shots=[];enemies=[];parts=[];player.x=W/2;player.y=H/2;player.ang=0;initStars();document.getElementById('menu').style.display='none';last=performance.now();requestAnimationFrame(loop)}
+document.getElementById('start').onclick=start;
+
+function burst(px,py,n=10,color='#b8fbff',speed=180){for(let i=0;i<n;i++)parts.push({x:px,y:py,vx:(Math.random()-.5)*speed,vy:(Math.random()-.5)*speed,a:1,c:color,sz:Math.random()*3+1})}
+
+// ---------- meteor (asteroid) generation ----------
+// Each meteor gets a jagged procedural polygon so it reads as a rock, not a circle.
+function makeMeteorShape(r){
+  const pts=[],n=8+Math.floor(Math.random()*4);
+  for(let i=0;i<n;i++){
+    const ang=(i/n)*Math.PI*2;
+    const rad=r*(0.72+Math.random()*0.5);
+    pts.push({ang,rad});
+  }
+  return pts;
+}
+function spawnEnemy(){
+  let side=Math.floor(Math.random()*4),
+      ex=side===0?-40:side===1?W+40:Math.random()*W,
+      ey=side===2?-40:side===3?H+40:Math.random()*H;
+  const r=16+Math.random()*16;
+  enemies.push({
+    x:ex,y:ey,r,
+    s:55+wave*4+Math.random()*15,
+    h:Math.max(1,Math.round(r/10)),
+    rot:Math.random()*Math.PI*2,
+    rotSpeed:(Math.random()-.5)*1.6,
+    shape:makeMeteorShape(r),
+    tint:['#ff4f82','#ff8a4f','#c76bff'][Math.floor(Math.random()*3)]
+  });
+}
+function splitMeteor(e){
+  if(e.r<14)return; // too small to split further
+  const pieces=1+Math.floor(Math.random()*2);
+  for(let i=0;i<pieces;i++){
+    const nr=e.r*0.55;
+    enemies.push({
+      x:e.x+(Math.random()-.5)*10,y:e.y+(Math.random()-.5)*10,r:nr,
+      s:e.s*1.15+Math.random()*20,
+      h:Math.max(1,Math.round(nr/10)),
+      rot:Math.random()*Math.PI*2,
+      rotSpeed:(Math.random()-.5)*2.4,
+      shape:makeMeteorShape(nr),
+      tint:e.tint
+    });
+  }
+}
+
+function update(dt){
+ let dx=(keys.KeyD||keys.ArrowRight?1:0)-(keys.KeyA||keys.ArrowLeft?1:0),
+     dy=(keys.KeyS||keys.ArrowDown?1:0)-(keys.KeyW||keys.ArrowUp?1:0),
+     len=Math.hypot(dx,dy)||1,
+     moving=len>0 && (dx||dy);
+ player.x=Math.max(25,Math.min(W-25,player.x+dx/len*player.s*dt));
+ player.y=Math.max(25,Math.min(H-25,player.y+dy/len*player.s*dt));
+ player.ang=Math.atan2(mouse.y-player.y,mouse.x-player.x);
+ if(moving){player.thrustT+=dt*14;burst(player.x-Math.cos(player.ang)*player.r,player.y-Math.sin(player.ang)*player.r,1,'#ffb14f',60)}
+
+ wave=1+Math.floor(score/1000);
+ spawn-=dt;if(spawn<=0){spawn=Math.max(.22,1.0-wave*.06);spawnEnemy()}
+
+ fire-=dt;
+ if(mouse.down&&fire<=0){
+   fire=.13;
+   let a=player.ang;
+   shots.push({x:player.x+Math.cos(a)*player.r,y:player.y+Math.sin(a)*player.r,vx:Math.cos(a)*760,vy:Math.sin(a)*760,r:4});
+ }
+ for(const s of shots){s.x+=s.vx*dt;s.y+=s.vy*dt}
+ shots=shots.filter(s=>s.x>-30&&s.x<W+30&&s.y>-30&&s.y<H+30);
+
+ for(const e of enemies){
+   let a=Math.atan2(player.y-e.y,player.x-e.x);
+   e.x+=Math.cos(a)*e.s*dt;e.y+=Math.sin(a)*e.s*dt;
+   e.rot+=e.rotSpeed*dt;
+   if(Math.hypot(player.x-e.x,player.y-e.y)<player.r+e.r*0.8){
+     hp-=25*dt;burst(player.x,player.y,2,'#65eaff',120);shake=Math.min(shake+6,18);
+   }
+ }
+ for(const s of shots)for(const e of enemies)
+   if(!e.dead&&Math.hypot(s.x-e.x,s.y-e.y)<s.r+e.r*0.85){
+     e.h--;s.x=-999;
+     burst(s.x,s.y,4,e.tint,140);
+     if(e.h<=0){e.dead=true;score+=Math.round(120-e.r);burst(e.x,e.y,20,e.tint,260);shake=Math.min(shake+4,10);splitMeteor(e)}
+   }
+ enemies=enemies.filter(e=>!e.dead);
+
+ for(const p of parts){p.x+=p.vx*dt;p.y+=p.vy*dt;p.a-=dt*2.2}
+ parts=parts.filter(p=>p.a>0);
+ if(shake>0)shake=Math.max(0,shake-dt*40);
+
+ if(hp<=0){
+   playing=false;
+   document.getElementById('menu').style.display='grid';
+   document.querySelector('h1').innerHTML='GAME<br>OVER';
+   document.querySelector('.panel p').innerHTML=`Final score: <b>${score}</b><br>Press START to play again.`;
+ }
+ document.getElementById('score').textContent=score;
+ document.getElementById('wave').textContent=wave;
+ document.getElementById('hp').textContent=Math.max(0,Math.ceil(hp));
+}
+
+function drawMeteor(e){
+  x.save();
+  x.translate(e.x,e.y);x.rotate(e.rot);
+  x.beginPath();
+  e.shape.forEach((p,i)=>{
+    const px=Math.cos(p.ang)*p.rad, py=Math.sin(p.ang)*p.rad;
+    if(i===0)x.moveTo(px,py);else x.lineTo(px,py);
+  });
+  x.closePath();
+  const g=x.createRadialGradient(-e.r*.3,-e.r*.3,e.r*.15,0,0,e.r);
+  g.addColorStop(0,'#3a2f45');g.addColorStop(1,'#150e1c');
+  x.fillStyle=g;
+  x.shadowBlur=16;x.shadowColor=e.tint;
+  x.fill();
+  x.lineWidth=2;x.strokeStyle=e.tint;x.stroke();
+  x.shadowBlur=0;
+  // craters
+  x.fillStyle='#00000055';
+  x.beginPath();x.arc(-e.r*.25,e.r*.15,e.r*.18,0,7);x.fill();
+  x.beginPath();x.arc(e.r*.3,-e.r*.2,e.r*.12,0,7);x.fill();
+  x.restore();
+}
+
+function drawShip(){
+  x.save();
+  x.translate(player.x,player.y);x.rotate(player.ang);
+  // engine flame
+  const flick=6+Math.sin(player.thrustT)*4;
+  x.beginPath();
+  x.moveTo(-player.r*0.9,-6);
+  x.lineTo(-player.r*0.9-flick,0);
+  x.lineTo(-player.r*0.9,6);
+  x.closePath();
+  x.fillStyle='#ffb14f';x.shadowBlur=14;x.shadowColor='#ff8a4f';x.fill();x.shadowBlur=0;
+  // hull (sleek triangular fighter)
+  x.beginPath();
+  x.moveTo(player.r*1.15,0);
+  x.lineTo(-player.r*0.75,player.r*0.75);
+  x.lineTo(-player.r*0.35,0);
+  x.lineTo(-player.r*0.75,-player.r*0.75);
+  x.closePath();
+  const hg=x.createLinearGradient(-player.r,0,player.r,0);
+  hg.addColorStop(0,'#1c2a52');hg.addColorStop(1,'#8fe9ff');
+  x.fillStyle=hg;x.shadowBlur=20;x.shadowColor='#65eaff';x.fill();x.shadowBlur=0;
+  x.lineWidth=2;x.strokeStyle='#bffcff';x.stroke();
+  // cockpit
+  x.beginPath();x.arc(player.r*0.25,0,player.r*0.22,0,7);
+  x.fillStyle='#04121f';x.fill();x.lineWidth=1.5;x.strokeStyle='#bffcff';x.stroke();
+  x.restore();
+}
+
+function draw(){
+ x.save();
+ if(shake>0){x.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake)}
+
+ let g=x.createRadialGradient(W/2,H/2,0,W/2,H/2,Math.max(W,H)*.7);
+ g.addColorStop(0,'#17244c');g.addColorStop(1,'#050711');
+ x.fillStyle=g;x.fillRect(-40,-40,W+80,H+80);
+
+ x.strokeStyle='#ffffff0d';x.lineWidth=1;
+ for(let i=0;i<W;i+=50){x.beginPath();x.moveTo(i,0);x.lineTo(i,H);x.stroke()}
+ for(let j=0;j<H;j+=50){x.beginPath();x.moveTo(0,j);x.lineTo(W,j);x.stroke()}
+
+ for(const st of stars){
+   st.x-=st.z*8*(1/60);if(st.x<0)st.x=W;
+   x.globalAlpha=.35+st.z*.3;x.fillStyle='#bfe3ff';
+   x.beginPath();x.arc(st.x,st.y,st.r,0,7);x.fill();
+ }
+ x.globalAlpha=1;
+
+ for(const s of shots){
+   x.fillStyle='#72f6ff';x.shadowBlur=18;x.shadowColor='#72f6ff';
+   x.beginPath();x.arc(s.x,s.y,5,0,7);x.fill();x.shadowBlur=0;
+ }
+
+ for(const e of enemies)drawMeteor(e);
+
+ drawShip();
+
+ for(const p of parts){
+   x.globalAlpha=p.a;x.fillStyle=p.c||'#b8fbff';
+   x.fillRect(p.x,p.y,p.sz||4,p.sz||4);
+ }
+ x.globalAlpha=1;
+ x.restore();
+}
+
+function loop(t){if(!playing)return;let dt=Math.min(.03,(t-last)/1000);last=t;update(dt);draw();requestAnimationFrame(loop)}
+initStars();draw();
+</script></body></html>
