@@ -1,0 +1,4 @@
+.camilla-owner-credentials.txt
+.env
+camilla.sqlite3
+__pycache__/

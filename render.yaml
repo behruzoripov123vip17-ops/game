@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: camilla-beauty-studio
+    runtime: python
+    plan: free
+    rootDir: Desktop/site
+    buildCommand: ""
+    startCommand: python manage.py runserver 0.0.0.0:$PORT
+    healthCheckPath: /
+    autoDeployTrigger: commit

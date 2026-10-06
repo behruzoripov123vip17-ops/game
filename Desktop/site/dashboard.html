@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow">
+  <title>CAMILLA — Кабинет владельца</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css?v=14">
+  <link rel="stylesheet" href="css/dashboard.css?v=1">
+</head>
+<body class="dashboard-page">
+  <main class="dash-shell">
+    <section id="ownerLogin" class="owner-login">
+      <p class="dash-kicker">CAMILLA / OWNER ONLY</p>
+      <h1>Кабинет владельца</h1>
+      <p>Войдите с email и паролем владельца.</p>
+      <form id="ownerLoginForm">
+        <label>Email<input id="ownerEmail" type="email" required autocomplete="email"></label>
+        <label>Пароль<input id="ownerPassword" type="password" required autocomplete="current-password"></label>
+        <button class="btn btn-primary" type="submit">Войти</button>
+        <p id="ownerLoginError" class="auth-error"></p>
+      </form>
+      <a href="index.html">← Вернуться на сайт</a>
+    </section>
+
+    <section id="ownerDashboard" hidden>
+      <header class="dash-head">
+        <div><p class="dash-kicker">CAMILLA / OWNER DASHBOARD</p><h1>Записи и аналитика</h1><p id="dashDate" class="dash-muted"></p></div>
+        <div class="dash-actions"><a class="btn btn-ghost" href="index.html">Сайт для клиентов</a><button id="ownerLogout" class="btn btn-ghost" type="button">Выйти</button></div>
+      </header>
+      <nav class="period-tabs" aria-label="Период аналитики"><button data-period="day">Сегодня</button><button class="active" data-period="week">Неделя</button><button data-period="month">Месяц</button></nav>
+      <div id="dashMetrics" class="dash-metrics"></div>
+      <div class="dash-grid">
+        <section class="dash-panel"><header><h2>Популярные услуги</h2><span id="dashPeriodName"></span></header><div id="serviceTrends" class="service-trends"></div></section>
+        <section class="dash-panel"><header><h2>Кто следующий</h2><span>Ближайшие 10</span></header><div id="upcomingList" class="upcoming-list"></div></section>
+      </div>
+      <section class="dash-panel dash-table-panel"><header><h2>Все записи за период</h2><span id="bookingCount"></span></header><div class="table-scroll"><table><thead><tr><th>Дата и время</th><th>Клиент</th><th>Контакт</th><th>Услуга</th><th>Сумма</th><th>Статус</th><th>Оплата</th></tr></thead><tbody id="bookingsTable"></tbody></table></div></section>
+    </section>
+  </main>
+  <script src="js/dashboard.js?v=1"></script>
+</body>
+</html>
