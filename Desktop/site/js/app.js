@@ -688,6 +688,7 @@
     await api("/api/bookings", { method: "POST", body: JSON.stringify({ specialist_id: 1, service_id: B.services[0], starts_at: `${B.date}T${B.time}`, ends_at: `${B.date}T${endTime}`, name: B.name, notes: B.comment, contact: B.contact, language: lang }) });
     await loadOccupiedBookings();
     toast("Запись сохранена — владелец получил уведомление");
+    // Keep the visitor on the booking card; no automatic scroll or redirect here.
     if (openTelegram) window.open(CONFIG.telegramURL, "_blank", "noopener");
   }
 
@@ -711,8 +712,35 @@
     $("#authSubmit").textContent = "Зарегистрироваться";
     $("#authSwitch").textContent = "У меня уже есть аккаунт";
     $("#authPassword").autocomplete = "new-password";
+    $("#authFirstName").required = true;
+    $("#authLastName").required = true;
     renderGoogleSignIn();
     modal.classList.add("on"); modal.setAttribute("aria-hidden", "false");
+  }
+
+  function playWelcomeSound() {
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new Ctx();
+      [523.25, 659.25, 783.99].forEach((frequency, i) => {
+        const osc = ctx.createOscillator(), gain = ctx.createGain();
+        osc.type = "sine"; osc.frequency.value = frequency;
+        gain.gain.setValueAtTime(.0001, ctx.currentTime + i * .12);
+        gain.gain.exponentialRampToValueAtTime(.12, ctx.currentTime + i * .12 + .02);
+        gain.gain.exponentialRampToValueAtTime(.0001, ctx.currentTime + i * .12 + .42);
+        osc.connect(gain).connect(ctx.destination); osc.start(ctx.currentTime + i * .12); osc.stop(ctx.currentTime + i * .12 + .45);
+      });
+      setTimeout(() => ctx.close(), 1100);
+    } catch (_) {}
+  }
+
+  function welcomeAccount() {
+    const el = document.createElement("div");
+    el.className = "account-welcome";
+    el.innerHTML = '<div class="welcome-sakura" aria-hidden="true">✦ 花 ✦</div><b>おめでとうございます</b><strong>Поздравляем с новым аккаунтом!</strong><span>Теперь записи и история всегда будут под рукой.</span>';
+    document.body.appendChild(el); playWelcomeSound();
+    requestAnimationFrame(() => el.classList.add("on"));
+    setTimeout(() => { el.classList.remove("on"); setTimeout(() => el.remove(), 500); }, 4300);
   }
 
   async function handleGoogleCredential(response) {
@@ -760,12 +788,14 @@
   }
 
   async function showProfile() {
-    const modal = $("#profileModal"), list = $("#profileBookings");
+    const modal = $("#profileModal"), list = $("#profileBookings"), stats = $("#profileStats");
     modal.classList.add("on"); modal.setAttribute("aria-hidden", "false");
     list.innerHTML = "<p class=\"muted\">Загружаем ваши записи…</p>";
+    $("#profileGreeting").textContent = `Здравствуйте, ${currentUser.name}${currentUser.last_name ? ` ${currentUser.last_name}` : ""}. Здесь хранится история ваших записей.`;
     try {
-      const { bookings } = await api("/api/bookings");
-      list.innerHTML = bookings.length ? bookings.map((b) => `<article class="admin-booking"><b>${esc(b.service_name)}</b><span>${esc(b.starts_at.replace("T", " "))}–${esc(b.ends_at.slice(11, 16))}</span><small>Статус: ${esc(b.status)}</small></article>`).join("") : "<p class=\"muted\">У вас пока нет записей. Выберите услугу и удобное время.</p>";
+      const { bookings, summary } = await api("/api/bookings");
+      stats.innerHTML = [[summary.count, "записей"], [`${nf(summary.total)} сум`, "сумма услуг"], [`${nf(summary.paid)} сум`, "оплачено"]].map(([value, label]) => `<div><b>${value}</b><span>${label}</span></div>`).join("");
+      list.innerHTML = bookings.length ? bookings.map((b) => `<article class="admin-booking"><b>${esc(b.service_name)} · ${nf(b.price_uzs)} сум</b><span>${esc(b.starts_at.replace("T", " "))}–${esc(b.ends_at.slice(11, 16))}</span><small>Статус: ${esc(b.status)} · ${b.payment_status === "PAID" ? "оплачено" : "ожидает оплаты"}</small></article>`).join("") : "<p class=\"muted\">У вас пока нет записей. Выберите услугу и удобное время.</p>";
     } catch (err) { list.innerHTML = `<p class="auth-error">${esc(err.message)}</p>`; }
   }
 
@@ -781,7 +811,7 @@
     if (!modal) return;
     $("#accountBtn")?.addEventListener("click", () => {
       if (currentUser?.role === "ADMIN") return window.location.assign("dashboard.html");
-      if (currentUser) return showProfile();
+      if (currentUser) return window.location.assign("account.html");
       showAuth();
     });
     $("#authClose").addEventListener("click", () => modal.classList.remove("on"));
@@ -793,14 +823,18 @@
       $("#authSubmit").textContent = register ? "Зарегистрироваться" : "Войти";
       $("#authSwitch").textContent = register ? "У меня уже есть аккаунт" : "Создать аккаунт";
       $("#authPassword").autocomplete = register ? "new-password" : "current-password";
+      $("#authFirstName").required = register;
+      $("#authLastName").required = register;
     });
     form.addEventListener("submit", async (e) => {
       e.preventDefault(); $("#authError").textContent = "";
       const register = card.classList.contains("register");
       try {
-        const data = await api(register ? "/api/auth/register" : "/api/auth/login", { method: "POST", body: JSON.stringify({ email: $("#authEmail").value, password: $("#authPassword").value, language: lang }) });
+        const data = await api(register ? "/api/auth/register" : "/api/auth/login", { method: "POST", body: JSON.stringify({ name: $("#authFirstName").value, last_name: $("#authLastName").value, email: $("#authEmail").value, password: $("#authPassword").value, language: lang }) });
         currentUser = data.user; modal.classList.remove("on");
-        if (currentUser.role === "ADMIN") { window.location.assign("dashboard.html"); } else toast("Аккаунт готов — продолжите запись");
+        if (currentUser.role === "ADMIN") { window.location.assign("dashboard.html"); }
+        else if (register) { welcomeAccount(); setTimeout(() => window.location.assign("account.html"), 1900); }
+        else window.location.assign("account.html");
       } catch (err) { $("#authError").textContent = err.message; }
     });
     $("#adminClose")?.addEventListener("click", () => $("#adminModal").classList.remove("on"));
@@ -993,6 +1027,15 @@
 
   /* ============ INIT ============ */
   function init() {
+    const loader = $("#siteLoader");
+    const dismissLoader = () => {
+      if (!loader) return;
+      loader.classList.add("is-hidden");
+      document.body.classList.remove("site-is-loading");
+      setTimeout(() => loader.remove(), 650);
+    };
+    window.addEventListener("load", dismissLoader, { once: true });
+    setTimeout(dismissLoader, 2600);
     renderMedia();
     splitHero();
     applyI18n();

@@ -6,7 +6,7 @@
   <title>CAMILLA Beauty Studio | Маникюр, педикюр, депиляция</title>
   <meta name="description" content="Студия CAMILLA: маникюр, педикюр, депиляция и Access Bars. 14 лет опыта. Запись через Telegram и Instagram." />
   <meta name="theme-color" content="#0e0714" />
-  <link rel="icon" href="data:аge/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230e0714'/%3E%3Ctext x='32' y='44' font-family='Georgia' font-size='36' fill='%23c4b5fd' text-anchor='middle'%3EC%3C/text%3E%3C/svg%3E" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%237f394e'/%3E%3Ctext x='32' y='44' font-family='Georgia' font-size='36' fill='white' text-anchor='middle'%3EC%3C/text%3E%3C/svg%3E" />
   <meta property="og:type" content="website" />
   <meta property="og:title" content="CAMILLA Beauty Studio" />
   <meta property="og:description" content="Маникюр • Педикюр • Депиляция • Access Bars. Запись онлайн." />
@@ -83,7 +83,7 @@
         <button class="lang-btn" data-lang="en">EN</button>
       </div>
       <a class="btn btn-primary btn-sm magnet" href="#booking" data-i18n="cta.book">Забронировать место</a>
-      <button id="accountBtn" class="btn btn-ghost btn-sm" type="button" aria-label="Гостевой режим — создать аккаунт или войти" title="Гостевой режим"><img src="images/account-icon-24.png" alt="Аккаунт" style="width: 20px; height: 20px; filter: invert(1); opacity: 0.8;"></button>
+      <button id="accountBtn" class="btn btn-ghost btn-sm account-button" type="button" aria-label="Гостевой режим — создать аккаунт или войти" title="Гостевой режим"><img src="images/account-icon.png" alt="" aria-hidden="true"></button>
       <button id="burger" class="burger" aria-label="Menu"><span></span><span></span><span></span></button>
     </div>
   </header>
@@ -338,6 +338,10 @@
       <h3 id="authTitle">Создать аккаунт</h3>
       <p id="authHint" class="auth-hint">Сейчас вы в гостевом режиме. Зарегистрируйтесь по email и паролю, чтобы сохранять записи.</p>
       <form id="authForm">
+        <div class="auth-name-row auth-name-field">
+          <label><span>Имя</span><input id="authFirstName" type="text" autocomplete="given-name" maxlength="60"></label>
+          <label><span>Фамилия</span><input id="authLastName" type="text" autocomplete="family-name" maxlength="60"></label>
+        </div>
         <label><span>Email</span><input id="authEmail" type="email" autocomplete="email" required></label>
         <label><span>Пароль</span><input id="authPassword" type="password" minlength="8" autocomplete="new-password" required></label>
         <button id="authSubmit" class="btn btn-primary" type="submit">Зарегистрироваться</button>
@@ -365,6 +369,8 @@
       <button id="profileClose" class="auth-close" type="button" aria-label="Закрыть">×</button>
       <p class="eyebrow small"><span class="line"></span><span>MY ACCOUNT</span></p>
       <h3 id="profileTitle">Мои записи</h3>
+      <p id="profileGreeting" class="admin-note"></p>
+      <div id="profileStats" class="profile-stats" aria-label="Статистика аккаунта"></div>
       <div id="profileBookings" class="admin-bookings"></div>
       <button id="profileLogout" class="auth-switch" type="button">Выйти из аккаунта</button>
     </div>

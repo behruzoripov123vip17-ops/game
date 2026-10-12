@@ -115,6 +115,10 @@ def init_db():
         user_columns = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
         if "google_sub" not in user_columns:
             conn.execute("ALTER TABLE users ADD COLUMN google_sub TEXT")
+        if "last_name" not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN last_name TEXT NOT NULL DEFAULT ''")
+        if "avatar_data" not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN avatar_data TEXT NOT NULL DEFAULT ''")
         conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub)")
         conn.executemany("INSERT OR IGNORE INTO services VALUES (?, ?, ?, ?, 1)", [
           ("a1", "Access Bars", 90, 300000), ("m1", "Маникюр без покрытия", 120, 70000),
@@ -271,7 +275,7 @@ def create_session(conn, user_id: int) -> str:
 
 
 def public_user(row):
-    return {k: row[k] for k in ("id", "name", "email", "role", "language", "created_at") if k in row.keys()}
+    return {k: row[k] for k in ("id", "name", "last_name", "email", "role", "language", "created_at", "avatar_data") if k in row.keys()}
 
 
 def verify_google_credential(credential: str):
@@ -323,14 +327,17 @@ class APIHandler(BaseHTTPRequestHandler):
                     email = data.get("email", "").strip().lower()
                     if not email or "@" not in email or len(data.get("password", "")) < 8:
                         return self.json(400, {"error": "Укажите корректный email и пароль минимум из 8 символов"})
+                    name = str(data.get("name", "")).strip()[:60]
+                    last_name = str(data.get("last_name", "")).strip()[:60]
+                    if not name or not last_name:
+                        return self.json(400, {"error": "Укажите имя и фамилию"})
                     # The owner's address is reserved: it can only use the credentials
                     # created locally during initialisation above.
                     if email == OWNER_EMAIL.lower():
                         return self.json(403, {"error": "Этот email зарезервирован для аккаунта владельца. Войдите с паролем владельца."})
                     if conn.execute("SELECT 1 FROM users WHERE email=?", (email,)).fetchone():
                         return self.json(409, {"error": "Этот email уже зарегистрирован"})
-                    name = data.get("name", "").strip() or email.split("@", 1)[0]
-                    cur = conn.execute("INSERT INTO users(name,email,password_hash,language) VALUES(?,?,?,?)", (name, email, password_hash(data["password"]), data.get("language", "ru")))
+                    cur = conn.execute("INSERT INTO users(name,last_name,email,password_hash,language) VALUES(?,?,?,?,?)", (name, last_name, email, password_hash(data["password"]), data.get("language", "ru")))
                     token = create_session(conn, cur.lastrowid)
                     return self.json(201, {"user": public_user(conn.execute("SELECT * FROM users WHERE id=?", (cur.lastrowid,)).fetchone())}, f"camilla_session={token}; Path=/; HttpOnly; SameSite=Lax; Max-Age={SESSION_TTL}")
                 if path == "/api/auth/login":
@@ -366,7 +373,7 @@ class APIHandler(BaseHTTPRequestHandler):
                     if user["role"] != "ADMIN": return self.json(403, {"error": "Доступ только для администратора"})
                     status = data.get("status")
                     payment_status = data.get("payment_status")
-                    if status not in (None, "CONFIRMED", "CANCELLED") or payment_status not in (None, "PAID", "UNPAID"):
+                    if status not in (None, "CONFIRMED", "COMPLETED", "CANCELLED") or payment_status not in (None, "PAID", "UNPAID"):
                         return self.json(400, {"error": "Некорректный статус"})
                     if not status and not payment_status: return self.json(400, {"error": "Выберите изменение"})
                     fields, values = [], []
@@ -376,6 +383,14 @@ class APIHandler(BaseHTTPRequestHandler):
                     if not conn.execute(f"UPDATE bookings SET {', '.join(fields)} WHERE id=?", values).rowcount:
                         return self.json(404, {"error": "Запись не найдена"})
                     return self.json(200, {"status": status, "payment_status": payment_status})
+                if path == "/api/profile/avatar":
+                    avatar = str(data.get("avatar_data", ""))
+                    # A compact data URL keeps personal avatars private in the same database.
+                    if avatar and (not avatar.startswith("data:image/") or len(avatar) > 900000):
+                        return self.json(400, {"error": "Выберите изображение JPG, PNG или WebP до 650 КБ"})
+                    conn.execute("UPDATE users SET avatar_data=? WHERE id=?", (avatar, user["id"]))
+                    row = conn.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
+                    return self.json(200, {"user": public_user(row)})
                 if path == "/api/bookings":
                     required = (data.get("specialist_id"), data.get("service_id"), data.get("starts_at"), data.get("ends_at"))
                     if not all(required): return self.json(400, {"error": "Недостаточно данных для записи"})
@@ -432,7 +447,7 @@ class APIHandler(BaseHTTPRequestHandler):
             if not user: return self.json(401, {"error": "Войдите в аккаунт"})
             if path == "/api/admin/bookings":
                 if user["role"] != "ADMIN": return self.json(403, {"error": "Доступ только для администратора"})
-                rows = conn.execute("SELECT b.*, s.name service_name, s.price_uzs, u.name customer_name, u.email customer_email FROM bookings b JOIN services s ON s.id=b.service_id JOIN users u ON u.id=b.user_id ORDER BY CASE WHEN b.starts_at >= datetime('now') THEN 0 ELSE 1 END, b.starts_at ASC").fetchall()
+                rows = conn.execute("SELECT b.*, s.name service_name, s.price_uzs, u.name customer_name, u.last_name customer_last_name, u.email customer_email FROM bookings b JOIN services s ON s.id=b.service_id JOIN users u ON u.id=b.user_id ORDER BY CASE WHEN b.starts_at >= datetime('now') THEN 0 ELSE 1 END, b.starts_at ASC").fetchall()
                 return self.json(200, {"bookings": [dict(x) for x in rows]})
             if path == "/api/admin/analytics":
                 if user["role"] != "ADMIN": return self.json(403, {"error": "Доступ только для администратора"})
@@ -451,14 +466,16 @@ class APIHandler(BaseHTTPRequestHandler):
                 modifiers = {"day": "-0 days", "week": "-6 days", "month": "-29 days"}
                 if period not in modifiers: return self.json(400, {"error": "Неизвестный период"})
                 start = modifiers[period]
-                rows = conn.execute("SELECT b.*, s.name service_name, s.price_uzs, u.name customer_name, u.email customer_email FROM bookings b JOIN services s ON s.id=b.service_id JOIN users u ON u.id=b.user_id WHERE date(b.starts_at) >= date('now', ?) ORDER BY b.starts_at ASC", (start,)).fetchall()
+                rows = conn.execute("SELECT b.*, s.name service_name, s.price_uzs, u.name customer_name, u.last_name customer_last_name, u.email customer_email FROM bookings b JOIN services s ON s.id=b.service_id JOIN users u ON u.id=b.user_id WHERE date(b.starts_at) >= date('now', ?) ORDER BY b.starts_at ASC", (start,)).fetchall()
                 totals = conn.execute("SELECT COUNT(*) count, COALESCE(SUM(s.price_uzs),0) expected, COALESCE(SUM(CASE WHEN b.payment_status='PAID' THEN s.price_uzs ELSE 0 END),0) paid FROM bookings b JOIN services s ON s.id=b.service_id WHERE date(b.starts_at) >= date('now', ?) AND b.status != 'CANCELLED'", (start,)).fetchone()
                 services = conn.execute("SELECT s.name, COUNT(*) count, COALESCE(SUM(s.price_uzs),0) amount FROM bookings b JOIN services s ON s.id=b.service_id WHERE date(b.starts_at) >= date('now', ?) AND b.status != 'CANCELLED' GROUP BY s.id ORDER BY count DESC, amount DESC", (start,)).fetchall()
-                upcoming = conn.execute("SELECT b.*, s.name service_name, s.price_uzs, u.name customer_name FROM bookings b JOIN services s ON s.id=b.service_id JOIN users u ON u.id=b.user_id WHERE b.starts_at >= datetime('now') AND b.status != 'CANCELLED' ORDER BY b.starts_at ASC LIMIT 10").fetchall()
+                upcoming = conn.execute("SELECT b.*, s.name service_name, s.price_uzs, u.name customer_name, u.last_name customer_last_name FROM bookings b JOIN services s ON s.id=b.service_id JOIN users u ON u.id=b.user_id WHERE b.starts_at >= datetime('now') AND b.status != 'CANCELLED' ORDER BY b.starts_at ASC LIMIT 10").fetchall()
                 return self.json(200, {"period": period, "summary": dict(totals), "services": [dict(x) for x in services], "bookings": [dict(x) for x in rows], "upcoming": [dict(x) for x in upcoming]})
             if path == "/api/bookings":
-                rows = conn.execute("SELECT b.*, s.name service_name FROM bookings b JOIN services s ON s.id=b.service_id WHERE b.user_id=? ORDER BY b.starts_at DESC", (user["id"],))
-                return self.json(200, {"bookings": [dict(x) for x in rows]})
+                rows = conn.execute("SELECT b.*, s.name service_name, s.price_uzs FROM bookings b JOIN services s ON s.id=b.service_id WHERE b.user_id=? ORDER BY b.starts_at DESC", (user["id"],)).fetchall()
+                total = sum(row["price_uzs"] for row in rows if row["status"] != "CANCELLED")
+                paid = sum(row["price_uzs"] for row in rows if row["status"] != "CANCELLED" and row["payment_status"] == "PAID")
+                return self.json(200, {"bookings": [dict(x) for x in rows], "summary": {"count": len(rows), "total": total, "paid": paid}})
             if path == "/api/notifications":
                 rows = conn.execute("SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC", (user["id"],))
                 return self.json(200, {"notifications": [dict(x) for x in rows]})

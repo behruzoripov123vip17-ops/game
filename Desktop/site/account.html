@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ru"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Мой аккаунт — CAMILLA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;800&family=Manrope:wght@400;600;700;800&family=Noto+Serif+JP:wght@300;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css?v=16"><link rel="stylesheet" href="css/account.css?v=1">
+</head><body class="account-page">
+  <main class="account-shell">
+    <a class="account-back" href="index.html">← На главную</a>
+    <section id="accountLoading" class="account-loading">Загружаем ваш кабинет…</section>
+    <section id="accountContent" hidden>
+      <header class="account-head"><p>マイアカウント / MY ACCOUNT</p><h1>Здравствуйте, <span id="accountName"></span></h1><button id="accountLogout" class="btn btn-ghost">Выйти</button></header>
+      <div class="account-grid">
+        <aside class="profile-card"><label class="avatar-picker"><img id="avatarImage" alt="Ваш аватар"><span>Изменить фото</span><input id="avatarInput" type="file" accept="image/png,image/jpeg,image/webp" hidden></label><b id="profileEmail"></b><small>Ваш личный кабинет CAMILLA</small></aside>
+        <section class="account-summary"><article><b id="statBookings">0</b><span>всего записей</span></article><article><b id="statTotal">0 сум</b><span>сумма услуг</span></article><article class="paid"><b id="statPaid">0 сум</b><span>оплачено</span></article></section>
+      </div>
+      <section class="history-card"><header><div><p>履歴 / HISTORY</p><h2>История ваших записей</h2></div><a class="btn btn-primary" href="index.html#booking">Новая запись</a></header><div id="bookingHistory" class="booking-history"></div></section>
+    </section>
+  </main><script src="js/account.js"></script>
+</body></html>
